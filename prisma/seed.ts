@@ -98,6 +98,27 @@ const PROJECTS: SeedProject[] = [
   { name: 'Studio site 2024', initials: 'SS', colorHex: '#c97064', archived: true, archivedAt: '2026-01-19', tasks: [] },
 ];
 
+// Translate prototype-style relative due strings ("Today", "Tomorrow", "Fri", "Yesterday")
+// into actual dates relative to "now" so the UI lights up Today/Also-today buckets.
+function parseDue(s: string | undefined): Date | null {
+  if (!s) return null;
+  const lower = s.toLowerCase();
+  const now = new Date(); now.setHours(0, 0, 0, 0);
+  if (lower === 'today') return now;
+  if (lower === 'tomorrow') { const d = new Date(now); d.setDate(d.getDate() + 1); return d; }
+  if (lower === 'yesterday') { const d = new Date(now); d.setDate(d.getDate() - 1); return d; }
+  const weekdays = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+  const idx = weekdays.findIndex((w) => lower.startsWith(w));
+  if (idx >= 0) {
+    const d = new Date(now);
+    const diff = (idx - now.getDay() + 7) % 7 || 7; // next occurrence, never today
+    d.setDate(d.getDate() + diff);
+    return d;
+  }
+  if (lower === '—' || lower === '-') return null;
+  return null;
+}
+
 async function insertTasks(userId: string, projectId: string, seeds: SeedTask[], parentTaskId: string | null = null) {
   for (let i = 0; i < seeds.length; i++) {
     const s = seeds[i];
@@ -125,6 +146,7 @@ async function insertTasks(userId: string, projectId: string, seeds: SeedTask[],
         billingMode,
         hourlyRateCents,
         taskPriceCents,
+        dueDate: parseDue(s.due),
         position: i,
         completedAt: s.status === Status.DONE || s.status === Status.INVOICED ? new Date() : null,
       },
