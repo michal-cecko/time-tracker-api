@@ -18,13 +18,19 @@ FROM oven/bun:1-alpine AS runtime
 WORKDIR /app
 
 ENV NODE_ENV=production
+ENV HOME=/app
 
-RUN addgroup -S app && adduser -S app -G app
+RUN addgroup -S app && adduser -S app -G app -h /app
 
 COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/prisma ./prisma
+
+# `seed` works from any cwd — Dokploy's web terminal sometimes starts at /
+RUN printf '#!/bin/sh\ncd /app && exec bun run prisma/seed.ts "$@"\n' > /usr/local/bin/seed \
+ && chmod +x /usr/local/bin/seed \
+ && chown -R app:app /app
 
 USER app
 EXPOSE 3000
