@@ -19,6 +19,8 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV HOME=/app
+# Any interactive shell (login or not) — Dokploy's terminal may bypass WORKDIR — lands in /app
+ENV ENV=/etc/sh.shrc
 
 RUN addgroup -S app && adduser -S app -G app -h /app
 
@@ -27,8 +29,12 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/prisma ./prisma
 
-# `seed` works from any cwd — Dokploy's web terminal sometimes starts at /
-RUN printf '#!/bin/sh\ncd /app && exec bun run prisma/seed.ts "$@"\n' > /usr/local/bin/seed \
+# Shell init: login shells via profile.d, non-login interactive via $ENV. Both cd to /app so
+# `bun run <anything>` works no matter how Dokploy's web terminal invokes the shell.
+RUN printf 'cd /app 2>/dev/null\n' > /etc/profile.d/cd-to-app.sh \
+ && chmod +x /etc/profile.d/cd-to-app.sh \
+ && cp /etc/profile.d/cd-to-app.sh /etc/sh.shrc \
+ && printf '#!/bin/sh\ncd /app && exec bun run prisma/seed.ts "$@"\n' > /usr/local/bin/seed \
  && chmod +x /usr/local/bin/seed \
  && chown -R app:app /app
 
