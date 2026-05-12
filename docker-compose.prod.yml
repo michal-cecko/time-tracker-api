@@ -36,7 +36,7 @@ services:
       # HTTPS router
       - "traefik.http.routers.lapse-api-secure.rule=Host(`lapse.cecko.dev`) && (PathPrefix(`/api`) || PathPrefix(`/realtime`) || PathPrefix(`/docs`))"
       - "traefik.http.routers.lapse-api-secure.entrypoints=websecure"
-      - "traefik.http.routers.lapse-api-secure.tls.certresolver=myresolver"
+      - "traefik.http.routers.lapse-api-secure.tls.certresolver=letsencrypt"
       - "traefik.http.routers.lapse-api-secure.priority=100"
 
       # Service
