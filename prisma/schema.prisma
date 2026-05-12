@@ -1,0 +1,221 @@
+// Lapse — time tracker schema.
+// Names mirror the prototype's data.jsx so the API contract is recognisable end-to-end.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Status {
+  BACKLOG
+  ESTIMATE
+  APPROVED
+  RETURN
+  IN_PROGRESS
+  IN_REVIEW
+  WAITING
+  HOLD
+  DONE
+  INVOICED
+}
+
+enum BillingMode {
+  NONE
+  HOURLY_RATE
+  TASK_PRICE
+}
+
+enum ActivityKind {
+  TIME_TRACKED
+  STATUS_CHANGED
+  TASK_CREATED
+  TASK_UPDATED
+  COMMENT
+  MANUAL_ENTRY_ADDED
+  OVER_ESTIMATE
+}
+
+enum SyncKind {
+  TIME
+  STATUS
+  COMMENT
+  TASK
+}
+
+enum Theme {
+  dark
+  bright
+}
+
+enum Density {
+  compact
+  regular
+  comfy
+}
+
+model User {
+  id           String     @id @default(uuid())
+  email        String     @unique
+  passwordHash String
+  name         String
+  avatarSeed   String     @default("L")
+  plan         String     @default("free")
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  settings     Settings?
+  projects     Project[]
+  tasks        Task[]
+  timeEntries  TimeEntry[]
+  sessions     Session[]
+  activities   ActivityLog[]
+  syncItems    SyncQueueItem[]
+  resetTokens  PasswordResetToken[]
+}
+
+model Settings {
+  userId              String   @id
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  theme               Theme    @default(dark)
+  accentHex           String   @default("#FF7A45")
+  density             Density  @default(regular)
+  fontScale           Float    @default(1.0)
+  idleDetectionMin    Int      @default(5)
+  autoStopAtMidnight  Boolean  @default(false)
+  pomodoroEnabled     Boolean  @default(false)
+  pomodoroWorkMin     Int      @default(25)
+  pomodoroBreakMin    Int      @default(5)
+  remindersEnabled    Boolean  @default(false)
+  calendarIntegration Boolean  @default(false)
+  updatedAt           DateTime @updatedAt
+}
+
+model Session {
+  id               String    @id @default(uuid())
+  userId           String
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshTokenHash String
+  staysLoggedIn    Boolean   @default(false)
+  userAgent        String?
+  ip               String?
+  expiresAt        DateTime
+  createdAt        DateTime  @default(now())
+  revokedAt        DateTime?
+
+  @@index([userId])
+  @@index([refreshTokenHash])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+model Project {
+  id         String    @id @default(uuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name       String
+  initials   String
+  colorHex   String
+  archived   Boolean   @default(false)
+  archivedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  tasks      Task[]
+  activities ActivityLog[]
+
+  @@index([userId, archived])
+}
+
+model Task {
+  id              String      @id @default(uuid())
+  projectId       String
+  project         Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parentTaskId    String?
+  parent          Task?       @relation("Subtasks", fields: [parentTaskId], references: [id], onDelete: Cascade)
+  children        Task[]      @relation("Subtasks")
+
+  title           String
+  description     Json?
+  status          Status      @default(BACKLOG)
+  urgent          Boolean     @default(false)
+  estimateSeconds Int?
+  billingMode     BillingMode @default(NONE)
+  hourlyRateCents Int?
+  taskPriceCents  Int?
+  dueDate         DateTime?
+  position        Int         @default(0)
+  completedAt     DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  timeEntries     TimeEntry[]
+  activities      ActivityLog[]
+
+  @@index([projectId, parentTaskId, position])
+  @@index([projectId, status])
+  @@index([userId])
+}
+
+model TimeEntry {
+  id               String    @id @default(uuid())
+  taskId           String
+  task             Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId           String
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  startedAt        DateTime
+  endedAt          DateTime?
+  durationSeconds  Int       @default(0)
+  manual           Boolean   @default(false)
+  note             String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([taskId, startedAt(sort: Desc)])
+  @@index([userId, startedAt(sort: Desc)])
+}
+
+model ActivityLog {
+  id        String        @id @default(uuid())
+  userId    String
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  taskId    String?
+  task      Task?         @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  projectId String?
+  project   Project?      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  kind      ActivityKind
+  meta      Json?
+  createdAt DateTime      @default(now())
+
+  @@index([taskId, createdAt(sort: Desc)])
+  @@index([projectId, createdAt(sort: Desc)])
+  @@index([userId, createdAt(sort: Desc)])
+}
+
+model SyncQueueItem {
+  id        String    @id
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind      SyncKind
+  payload   Json
+  appliedAt DateTime?
+  error     String?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, appliedAt])
+}

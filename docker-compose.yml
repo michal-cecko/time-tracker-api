@@ -1,0 +1,58 @@
+# Minimal, performance-tuned stack: just Postgres + API.
+# Bring up only the DB during local dev: `docker compose up -d db`
+# Full stack:                            `docker compose up -d`
+
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: lapse-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: lapse
+      POSTGRES_PASSWORD: lapse
+      POSTGRES_DB: lapse
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_buffers=256MB"
+      - "-c"
+      - "work_mem=16MB"
+      - "-c"
+      - "max_connections=50"
+      - "-c"
+      - "synchronous_commit=off"
+    ports:
+      # Host port 5433 to avoid clashing with a local Postgres on 5432.
+      # Set DATABASE_URL accordingly when running migrations from the host.
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - lapse-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lapse -d lapse"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build: .
+    container_name: lapse-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://lapse:lapse@db:5432/lapse?schema=public
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev-access-secret-please-change-me-now}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev-refresh-secret-please-change-me-now}
+      JWT_ACCESS_TTL: 15m
+      JWT_REFRESH_TTL_DEFAULT: 7d
+      JWT_REFRESH_TTL_STAY: 90d
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,capacitor://localhost,http://localhost}
+    ports:
+      # Host port 3010 to avoid clashing with anything on 3000.
+      - "3010:3000"
+
+volumes:
+  lapse-pgdata:
