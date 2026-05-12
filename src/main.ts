@@ -9,7 +9,7 @@ import cors from '@fastify/cors';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 import { loadEnv } from './config/env';
-import { IoAdapter } from '@nestjs/platform-socket.io';
+import { LapseIoAdapter } from './realtime/io-adapter';
 
 async function bootstrap() {
   const env = loadEnv();
@@ -41,7 +41,7 @@ async function bootstrap() {
     }),
   );
 
-  app.useWebSocketAdapter(new IoAdapter(app));
+  app.useWebSocketAdapter(new LapseIoAdapter(app));
 
   const config = new DocumentBuilder()
     .setTitle('Lapse API')
