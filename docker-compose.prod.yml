@@ -1,7 +1,7 @@
 # Lapse API — production deploy for Dokploy on the VPS.
 #   Routes: lapse.cecko.dev/api, /realtime, /docs  →  this api container.
-#   Postgres stays on the internal `database` network (not exposed).
-#   Set secrets in Dokploy → Environment (env_file: .env.prod) — do NOT commit.
+#   Postgres: shared Dokploy service `postgres-connect-digital-driver-ps9hl6`
+#   on the `dokploy-network` overlay. Env injected by Dokploy.
 
 services:
   api:
@@ -9,22 +9,25 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: lapse-api
-    env_file: .env.prod
-    depends_on:
-      db:
-        condition: service_healthy
     environment:
       NODE_ENV: production
       PORT: 3000
-      DATABASE_URL: postgresql://lapse:${POSTGRES_PASSWORD}@db:5432/lapse?schema=public
+      DATABASE_URL: postgresql://lapse:${POSTGRES_PASSWORD}@postgres-connect-digital-driver-ps9hl6:5432/lapse?schema=public
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
+      JWT_REFRESH_TTL_DEFAULT: ${JWT_REFRESH_TTL_DEFAULT:-7d}
+      JWT_REFRESH_TTL_STAY: ${JWT_REFRESH_TTL_STAY:-90d}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      APP_URL: ${APP_URL}
+      SENTRY_DSN: ${SENTRY_DSN:-}
     networks:
-      - web
-      - database
+      - dokploy-network
     labels:
       - "traefik.enable=true"
-      - "traefik.docker.network=web"
+      - "traefik.docker.network=dokploy-network"
 
-      # HTTP → HTTPS redirect router (shared with the web service via same Host)
+      # HTTP router (redirects to HTTPS)
       - "traefik.http.routers.lapse-api.rule=Host(`lapse.cecko.dev`) && (PathPrefix(`/api`) || PathPrefix(`/realtime`) || PathPrefix(`/docs`))"
       - "traefik.http.routers.lapse-api.entrypoints=web"
       - "traefik.http.routers.lapse-api.middlewares=lapse-api-redirect"
@@ -44,38 +47,6 @@ services:
       - "traefik.http.middlewares.lapse-api-redirect.redirectscheme.permanent=true"
     restart: unless-stopped
 
-  db:
-    image: postgres:17-alpine
-    container_name: lapse-db
-    environment:
-      POSTGRES_USER: lapse
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: lapse
-    command:
-      - "postgres"
-      - "-c"
-      - "shared_buffers=256MB"
-      - "-c"
-      - "work_mem=16MB"
-      - "-c"
-      - "max_connections=50"
-      - "-c"
-      - "synchronous_commit=off"
-    volumes:
-      - type: bind
-        source: /volumes/lapse-api/pgdata
-        target: /var/lib/postgresql/data
-    networks:
-      - database
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U lapse -d lapse"]
-      interval: 3s
-      timeout: 3s
-      retries: 20
-    restart: unless-stopped
-
 networks:
-  web:
-    external: true
-  database:
+  dokploy-network:
     external: true

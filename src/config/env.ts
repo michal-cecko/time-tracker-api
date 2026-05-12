@@ -11,6 +11,7 @@ const EnvSchema = z.object({
   JWT_REFRESH_TTL_STAY: z.string().default('90d'),
   CORS_ORIGINS: z.string().default(''),
   APP_URL: z.string().default('http://localhost:3000'),
+  SENTRY_DSN: z.string().optional(),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

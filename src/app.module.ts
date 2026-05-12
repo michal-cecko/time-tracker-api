@@ -1,6 +1,9 @@
 import { Module } from '@nestjs/common';
+import { APP_FILTER } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { LoggerModule } from 'nestjs-pino';
+import { SentryModule } from '@sentry/nestjs/setup';
+import { SentryGlobalFilter } from '@sentry/nestjs/setup';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
@@ -14,6 +17,7 @@ import { RealtimeModule } from './realtime/realtime.module';
 
 @Module({
   imports: [
+    SentryModule.forRoot(),
     ConfigModule.forRoot({ isGlobal: true }),
     LoggerModule.forRoot({
       pinoHttp: {
@@ -32,6 +36,9 @@ import { RealtimeModule } from './realtime/realtime.module';
     ActivityModule,
     SyncModule,
     ReportsModule,
+  ],
+  providers: [
+    { provide: APP_FILTER, useClass: SentryGlobalFilter },
   ],
 })
 export class AppModule {}
