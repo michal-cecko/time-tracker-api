@@ -12,7 +12,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3000
-      DATABASE_URL: postgresql://lapse:${POSTGRES_PASSWORD}@postgres-connect-digital-driver-ps9hl6:5432/lapse?schema=public
+      DATABASE_URL: postgresql://prod_lapse:${POSTGRES_PASSWORD}@postgres-connect-digital-driver-ps9hl6:5432/prod_lapse?schema=public
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
       JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
