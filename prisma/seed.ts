@@ -155,7 +155,7 @@ async function insertTasks(userId: string, projectId: string, seeds: SeedTask[],
     if (s.spentSec && s.spentSec > 0) {
       const now = new Date();
       if (s.running) {
-        // running entry — endedAt null, contributes elapsed up to now
+        // Running entry — endedAt null, contributes elapsed up to now.
         await prisma.timeEntry.create({
           data: {
             userId,
@@ -166,13 +166,21 @@ async function insertTasks(userId: string, projectId: string, seeds: SeedTask[],
           },
         });
       } else {
-        const ended = new Date(now.getTime() - 60 * 60 * 1000);
+        // Spread time entries across the past 7 days so the weekly chart has
+        // bars on every day. Each task drops a chunk on a different day based
+        // on its position in the project so the distribution feels natural.
+        const dayOffset = (i % 6) + 1; // 1..6 days ago (skip today for non-running)
+        const startHour = 9 + (i % 4) * 2; // 9, 11, 13, 15
+        const startedAt = new Date(now);
+        startedAt.setDate(startedAt.getDate() - dayOffset);
+        startedAt.setHours(startHour, 0, 0, 0);
+        const endedAt = new Date(startedAt.getTime() + s.spentSec * 1000);
         await prisma.timeEntry.create({
           data: {
             userId,
             taskId: task.id,
-            startedAt: new Date(ended.getTime() - s.spentSec * 1000),
-            endedAt: ended,
+            startedAt,
+            endedAt,
             durationSeconds: s.spentSec,
           },
         });
@@ -216,9 +224,9 @@ async function main() {
   const user = await prisma.user.create({
     data: {
       email,
-      name: 'Alex',
+      name: 'Alex Rivera',
       passwordHash,
-      avatarSeed: 'A',
+      avatarSeed: 'AR',
       settings: { create: {} },
     },
   });
