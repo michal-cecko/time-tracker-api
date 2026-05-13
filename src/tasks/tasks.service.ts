@@ -157,7 +157,55 @@ export class TasksService {
     const existing = await this.prisma.task.findFirst({ where: { id, userId } });
     if (!existing) throw new NotFoundException('Task not found');
 
+    // ── Move guards ──────────────────────────────────────────────────────
+    // 1. Validate new parent / project ownership.
+    // 2. Reject moving a task under itself or any of its descendants
+    //    (would create a cycle).
+    // 3. If projectId changes (either explicit, or implied by re-parenting),
+    //    cascade the new projectId to every descendant so all sub-tasks
+    //    stay in the same project tree as their root.
+    let nextProjectId = existing.projectId;
+    let nextParentTaskId: string | null | undefined = undefined;
+
+    if (dto.parentTaskId !== undefined) {
+      if (dto.parentTaskId === null) {
+        nextParentTaskId = null;
+      } else if (dto.parentTaskId === id) {
+        throw new BadRequestException('A task cannot be its own parent');
+      } else {
+        const newParent = await this.prisma.task.findFirst({ where: { id: dto.parentTaskId, userId } });
+        if (!newParent) throw new BadRequestException('New parent task not found');
+        const descendants = await this.descendantIds(id);
+        if (descendants.includes(dto.parentTaskId)) {
+          throw new BadRequestException('Cannot move a task under one of its own descendants');
+        }
+        nextParentTaskId = dto.parentTaskId;
+        nextProjectId = newParent.projectId; // inherit parent's project
+      }
+    }
+
+    if (dto.projectId !== undefined && dto.projectId !== existing.projectId) {
+      // Explicit project move beats inheritance — but only valid when the
+      // task is becoming top-level (no parent) in the target project.
+      if (nextParentTaskId == null && dto.parentTaskId === null) {
+        // already chosen — re-parent + new project
+      } else if (nextParentTaskId !== undefined) {
+        // The new parent's project will be used; ignore dto.projectId mismatch.
+      } else if (existing.parentTaskId == null) {
+        // top-level today; allow direct project change
+      } else {
+        throw new BadRequestException('Cannot change projectId without also setting parentTaskId to null');
+      }
+      const target = await this.prisma.project.findFirst({ where: { id: dto.projectId, userId } });
+      if (!target) throw new NotFoundException('Target project not found');
+      nextProjectId = dto.projectId;
+    }
+
     const data: Prisma.TaskUpdateInput = { ...dto } as any;
+    delete (data as any).projectId; // we'll set it explicitly below
+    delete (data as any).parentTaskId;
+    if (nextParentTaskId !== undefined) (data as any).parentTaskId = nextParentTaskId;
+    if (nextProjectId !== existing.projectId) (data as any).projectId = nextProjectId;
     if (dto.dueDate !== undefined) data.dueDate = dto.dueDate ? new Date(dto.dueDate) : null;
     if (dto.description !== undefined) data.description = (dto.description as Prisma.InputJsonValue) ?? Prisma.JsonNull;
     if (dto.status && CLOSED_STATUSES.includes(dto.status) && !existing.completedAt) {
@@ -167,6 +215,18 @@ export class TasksService {
     }
 
     const task = await this.prisma.task.update({ where: { id }, data });
+
+    // Cascade projectId to descendants when the root moved across projects.
+    if (nextProjectId !== existing.projectId) {
+      const ids = await this.descendantIds(id);
+      const descIds = ids.filter((x) => x !== id);
+      if (descIds.length > 0) {
+        await this.prisma.task.updateMany({
+          where: { id: { in: descIds } },
+          data: { projectId: nextProjectId },
+        });
+      }
+    }
 
     if (dto.status && dto.status !== existing.status) {
       await this.prisma.activityLog.create({
@@ -181,6 +241,59 @@ export class TasksService {
     }
     this.rt.emitToUser(userId, 'task.upserted', task);
     return task;
+  }
+
+  // Deep-clones a task tree as a sibling at position+1. Time entries are
+  // intentionally NOT copied; the duplicate starts fresh.
+  async duplicate(userId: string, id: string) {
+    const root = await this.prisma.task.findFirst({ where: { id, userId } });
+    if (!root) throw new NotFoundException('Task not found');
+
+    const tree = await this.prisma.task.findMany({
+      where: { userId, id: { in: await this.descendantIds(id) } },
+    });
+    const byParent = new Map<string | null, typeof tree>();
+    for (const t of tree) {
+      const k = t.parentTaskId ?? null;
+      const arr = byParent.get(k) ?? [];
+      arr.push(t);
+      byParent.set(k, arr);
+    }
+
+    const clone = async (
+      original: typeof root,
+      newParentTaskId: string | null,
+      position: number,
+      titleSuffix: string,
+    ): Promise<string> => {
+      const created = await this.prisma.task.create({
+        data: {
+          projectId: original.projectId,
+          userId,
+          parentTaskId: newParentTaskId,
+          title: original.title + titleSuffix,
+          status: original.status,
+          urgent: original.urgent,
+          estimateSeconds: original.estimateSeconds,
+          billingMode: original.billingMode,
+          hourlyRateCents: original.hourlyRateCents,
+          taskPriceCents: original.taskPriceCents,
+          dueDate: original.dueDate,
+          position,
+          description: (original.description as Prisma.InputJsonValue) ?? Prisma.JsonNull,
+        },
+      });
+      const kids = byParent.get(original.id) ?? [];
+      for (let i = 0; i < kids.length; i++) {
+        await clone(kids[i], created.id, i, '');
+      }
+      return created.id;
+    };
+
+    const newId = await clone(root, root.parentTaskId, root.position + 1, ' (copy)');
+    const newRoot = await this.prisma.task.findUniqueOrThrow({ where: { id: newId } });
+    this.rt.emitToUser(userId, 'task.upserted', newRoot);
+    return newRoot;
   }
 
   async setStatus(userId: string, id: string, dto: SetStatusDto) {

@@ -39,6 +39,7 @@ export class UpdateTaskDto {
   @ApiPropertyOptional() @IsOptional() @IsDateString() dueDate?: string | null;
   @ApiPropertyOptional() @IsOptional() @IsObject() description?: Record<string, unknown>;
   @ApiPropertyOptional() @IsOptional() @IsUUID() parentTaskId?: string | null;
+  @ApiPropertyOptional() @IsOptional() @IsUUID() projectId?: string;
   @ApiPropertyOptional() @IsOptional() @IsInt() position?: number;
 }
 

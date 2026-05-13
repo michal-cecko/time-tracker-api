@@ -42,6 +42,11 @@ export class TasksController {
     return this.tasks.reorder(user.id, id, dto);
   }
 
+  @Post('tasks/:id/duplicate')
+  duplicate(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.tasks.duplicate(user.id, id);
+  }
+
   @Delete('tasks/:id')
   @HttpCode(204)
   async remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
