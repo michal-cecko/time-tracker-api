@@ -63,11 +63,12 @@ export class TasksService {
     return roots;
   }
 
-  private decorate(t: TaskWithEntries): any {
+  private decorate(t: TaskWithEntries, ancestors: Array<{ id: string; title: string }> = []): any {
     const ownTracked = t.timeEntries.reduce((sum, e) => {
       return sum + (e.endedAt ? e.durationSeconds : Math.max(0, Math.floor((Date.now() - e.startedAt.getTime()) / 1000)));
     }, 0);
-    const children = t.children.map((c) => this.decorate(c));
+    const childAncestors = [...ancestors, { id: t.id, title: t.title }];
+    const children = t.children.map((c) => this.decorate(c, childAncestors));
     const childTracked = children.reduce((s, c) => s + c.totalTime, 0);
     const childEstimate = children.reduce((s, c) => s + (c.totalEstimate ?? 0), 0);
     const totalTime = ownTracked + childTracked;
@@ -113,6 +114,7 @@ export class TasksService {
     const { timeEntries, ...rest } = t as any;
     return {
       ...rest,
+      ancestors,
       totalTime,
       totalEstimate,
       running,
@@ -145,6 +147,15 @@ export class TasksService {
     })) as unknown as TaskWithEntries[];
     const map = new Map(flat.map((x) => [x.id, x]));
     const root = map.get(id)!;
+    // Walk up parents to assemble the breadcrumb chain that leads to this task.
+    const ancestors: Array<{ id: string; title: string }> = [];
+    let cursor: TaskWithEntries | undefined = root;
+    while (cursor?.parentTaskId) {
+      const p = map.get(cursor.parentTaskId);
+      if (!p) break;
+      ancestors.unshift({ id: p.id, title: p.title });
+      cursor = p;
+    }
     // Restrict tree to this subtree only, sorted by status then position
     // to match the project-tree ordering.
     const collect = (node: TaskWithEntries): TaskWithEntries => ({
@@ -154,7 +165,7 @@ export class TasksService {
         .sort((a, b) => this.sortSiblings(a, b))
         .map(collect),
     });
-    return this.decorate(collect(root));
+    return this.decorate(collect(root), ancestors);
   }
 
   async create(userId: string, dto: CreateTaskDto) {

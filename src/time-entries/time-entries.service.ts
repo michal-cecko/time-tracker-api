@@ -131,14 +131,38 @@ export class TimeEntriesService {
       if (q.from) where.startedAt.gte = new Date(q.from);
       if (q.to) where.startedAt.lte = new Date(q.to);
     }
-    return this.prisma.timeEntry.findMany({
+    const entries = await this.prisma.timeEntry.findMany({
       where,
       orderBy: { startedAt: 'desc' },
       include: {
         task: {
-          select: { id: true, title: true, project: { select: { id: true, name: true, colorHex: true, initials: true } } },
+          select: { id: true, title: true, parentTaskId: true, project: { select: { id: true, name: true, colorHex: true, initials: true } } },
         },
       },
+    });
+    // Resolve ancestor chains (Project > Parent > … > Self minus the leaf)
+    // for every entry that points at a nested task. Single query, mapped in JS.
+    const needAncestors = entries.some((e) => e.task?.parentTaskId);
+    if (!needAncestors) return entries;
+    const all = await this.prisma.task.findMany({
+      where: { userId },
+      select: { id: true, title: true, parentTaskId: true },
+    });
+    const map = new Map(all.map((t) => [t.id, t]));
+    const chainOf = (taskId: string): Array<{ id: string; title: string }> => {
+      const chain: Array<{ id: string; title: string }> = [];
+      let cur = map.get(taskId);
+      while (cur?.parentTaskId) {
+        const p = map.get(cur.parentTaskId);
+        if (!p) break;
+        chain.unshift({ id: p.id, title: p.title });
+        cur = p;
+      }
+      return chain;
+    };
+    return entries.map((e) => {
+      if (!e.task) return e;
+      return { ...e, task: { ...e.task, ancestors: chainOf(e.taskId) } };
     });
   }
 }

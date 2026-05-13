@@ -17,6 +17,11 @@ export class ProjectsController {
     return this.projects.list(user.id, q);
   }
 
+  @Get(':id')
+  getOne(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.projects.getOrThrow(user.id, id);
+  }
+
   @Post()
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateProjectDto) {
     return this.projects.create(user.id, dto);
