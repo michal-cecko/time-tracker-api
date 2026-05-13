@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
 import * as crypto from 'crypto';
@@ -53,6 +53,9 @@ export class AuthService {
   }
 
   async register(dto: RegisterDto, userAgent?: string, ip?: string) {
+    if (!this.env.REGISTRATION_ENABLED) {
+      throw new ForbiddenException('Registration is closed');
+    }
     const existing = await this.prisma.user.findUnique({ where: { email: dto.email } });
     if (existing) throw new ConflictException('Email already registered');
 

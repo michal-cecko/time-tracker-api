@@ -12,6 +12,12 @@ const EnvSchema = z.object({
   CORS_ORIGINS: z.string().default(''),
   APP_URL: z.string().default('http://localhost:3000'),
   SENTRY_DSN: z.string().optional(),
+  // Public sign-up. Default off in production so randoms can't join your
+  // tracker; flip the env var when you want to open it up.
+  REGISTRATION_ENABLED: z
+    .string()
+    .transform((v) => v === 'true' || v === '1')
+    .default('false'),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

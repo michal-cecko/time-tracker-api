@@ -1,10 +1,11 @@
-import { Body, Controller, HttpCode, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Post, Req, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { ForgotDto, LoginDto, RefreshDto, RegisterDto, ResetDto } from './dto/auth.dto';
 import { FastifyRequest } from 'fastify';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser, AuthUser } from '../common/decorators/current-user.decorator';
+import { loadEnv } from '../config/env';
 
 @ApiTags('auth')
 @Controller({ path: 'auth', version: '1' })
@@ -16,6 +17,13 @@ export class AuthController {
       userAgent: (req.headers['user-agent'] as string) ?? undefined,
       ip: req.ip,
     };
+  }
+
+  // Read-only flags the client can use to render the right auth UI.
+  @Get('config')
+  config() {
+    const env = loadEnv();
+    return { registrationEnabled: env.REGISTRATION_ENABLED };
   }
 
   @Post('register')

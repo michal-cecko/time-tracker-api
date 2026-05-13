@@ -49,6 +49,7 @@ enum SyncKind {
 enum Theme {
   dark
   bright
+  system
 }
 
 enum Density {
@@ -84,13 +85,8 @@ model Settings {
   accentHex           String   @default("#FF7A45")
   density             Density  @default(regular)
   fontScale           Float    @default(1.0)
-  idleDetectionMin    Int      @default(5)
-  autoStopAtMidnight  Boolean  @default(false)
-  pomodoroEnabled     Boolean  @default(false)
-  pomodoroWorkMin     Int      @default(25)
-  pomodoroBreakMin    Int      @default(5)
-  remindersEnabled    Boolean  @default(false)
-  calendarIntegration Boolean  @default(false)
+  idleDetectionMin    Int      @default(60)
+  autoStopAtMidnight  Boolean  @default(true)
   updatedAt           DateTime @updatedAt
 }
 
