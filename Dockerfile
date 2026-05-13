@@ -22,11 +22,9 @@ RUN apk add --no-cache bash
 
 ENV NODE_ENV=production
 ENV HOME=/app
-# Put project-local bins (prisma, nest, etc.) on PATH so `prisma migrate deploy`
-# works directly in the Dokploy Docker Terminal without `bunx`.
-ENV PATH="/app/node_modules/.bin:${PATH}"
-# Any interactive shell (login or not) — Dokploy's terminal may bypass WORKDIR — lands in /app.
-# $ENV is honored by ash/sh; $BASH_ENV by bash non-interactive; /etc/bash.bashrc by bash interactive.
+# Project-local bins on PATH. bun:alpine's /etc/profile resets PATH for login shells,
+# so the rc hook below re-exports this in every shell mode to survive that.
+ENV PATH="/app/node_modules/.bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 ENV ENV=/etc/sh.shrc
 ENV BASH_ENV=/etc/sh.shrc
 
@@ -37,14 +35,16 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/prisma ./prisma
 
-# Shell init: login shells via profile.d, non-login interactive via $ENV / bash.bashrc. Both cd to /app so
-# `bun run <anything>` and `prisma <anything>` work no matter how Dokploy's web terminal invokes the shell.
-RUN printf 'cd /app 2>/dev/null\n' > /etc/profile.d/cd-to-app.sh \
+# Shell init: cd to /app and re-export PATH (login shells get PATH clobbered by /etc/profile),
+# plus shims at /usr/local/bin/ so `prisma`, `migrate`, `seed` work from any cwd.
+RUN printf 'export PATH="/app/node_modules/.bin:$PATH"\ncd /app 2>/dev/null\n' > /etc/profile.d/cd-to-app.sh \
  && chmod +x /etc/profile.d/cd-to-app.sh \
  && cp /etc/profile.d/cd-to-app.sh /etc/sh.shrc \
  && cp /etc/profile.d/cd-to-app.sh /etc/bash.bashrc \
+ && printf '#!/bin/sh\ncd /app && exec ./node_modules/.bin/prisma "$@"\n' > /usr/local/bin/prisma \
+ && printf '#!/bin/sh\ncd /app && exec ./node_modules/.bin/prisma migrate deploy "$@"\n' > /usr/local/bin/migrate \
  && printf '#!/bin/sh\ncd /app && exec bun run prisma/seed.ts "$@"\n' > /usr/local/bin/seed \
- && chmod +x /usr/local/bin/seed \
+ && chmod +x /usr/local/bin/prisma /usr/local/bin/migrate /usr/local/bin/seed \
  && chown -R app:app /app
 
 USER app
