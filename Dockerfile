@@ -22,9 +22,9 @@ RUN apk add --no-cache bash
 
 ENV NODE_ENV=production
 ENV HOME=/app
-# Project-local bins on PATH. bun:alpine's /etc/profile resets PATH for login shells,
-# so the rc hook below re-exports this in every shell mode to survive that.
-ENV PATH="/app/node_modules/.bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+# Project-local bins on PATH, plus bun's node-fallback so `#!/usr/bin/env node` shebangs resolve.
+# bun:alpine's /etc/profile resets PATH for login shells, so the rc hook below re-exports this.
+ENV PATH="/app/node_modules/.bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/bun-node-fallback-bin"
 ENV ENV=/etc/sh.shrc
 ENV BASH_ENV=/etc/sh.shrc
 
@@ -37,12 +37,12 @@ COPY --from=build /app/prisma ./prisma
 
 # Shell init: cd to /app and re-export PATH (login shells get PATH clobbered by /etc/profile),
 # plus shims at /usr/local/bin/ so `prisma`, `migrate`, `seed` work from any cwd.
-RUN printf 'export PATH="/app/node_modules/.bin:$PATH"\ncd /app 2>/dev/null\n' > /etc/profile.d/cd-to-app.sh \
+RUN printf 'export PATH="/app/node_modules/.bin:$PATH:/usr/local/bun-node-fallback-bin"\ncd /app 2>/dev/null\n' > /etc/profile.d/cd-to-app.sh \
  && chmod +x /etc/profile.d/cd-to-app.sh \
  && cp /etc/profile.d/cd-to-app.sh /etc/sh.shrc \
  && cp /etc/profile.d/cd-to-app.sh /etc/bash.bashrc \
- && printf '#!/bin/sh\ncd /app && exec ./node_modules/.bin/prisma "$@"\n' > /usr/local/bin/prisma \
- && printf '#!/bin/sh\ncd /app && exec ./node_modules/.bin/prisma migrate deploy "$@"\n' > /usr/local/bin/migrate \
+ && printf '#!/bin/sh\ncd /app && exec bunx prisma "$@"\n' > /usr/local/bin/prisma \
+ && printf '#!/bin/sh\ncd /app && exec bunx prisma migrate deploy "$@"\n' > /usr/local/bin/migrate \
  && printf '#!/bin/sh\ncd /app && exec bun run prisma/seed.ts "$@"\n' > /usr/local/bin/seed \
  && chmod +x /usr/local/bin/prisma /usr/local/bin/migrate /usr/local/bin/seed \
  && chown -R app:app /app
