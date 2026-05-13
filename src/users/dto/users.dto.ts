@@ -12,11 +12,6 @@ export class UpdateSettingsDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @Matches(/^#([0-9a-fA-F]{6})$/) accentHex?: string;
   @ApiPropertyOptional({ enum: Density }) @IsOptional() @IsEnum(Density) density?: Density;
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0.85) @Max(1.3) fontScale?: number;
-  @ApiPropertyOptional() @IsOptional() @IsInt() @Min(1) @Max(60) idleDetectionMin?: number;
+  @ApiPropertyOptional() @IsOptional() @IsInt() @Min(1) @Max(720) idleDetectionMin?: number;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() autoStopAtMidnight?: boolean;
-  @ApiPropertyOptional() @IsOptional() @IsBoolean() pomodoroEnabled?: boolean;
-  @ApiPropertyOptional() @IsOptional() @IsInt() @Min(5) @Max(120) pomodoroWorkMin?: number;
-  @ApiPropertyOptional() @IsOptional() @IsInt() @Min(1) @Max(60) pomodoroBreakMin?: number;
-  @ApiPropertyOptional() @IsOptional() @IsBoolean() remindersEnabled?: boolean;
-  @ApiPropertyOptional() @IsOptional() @IsBoolean() calendarIntegration?: boolean;
 }

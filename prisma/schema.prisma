@@ -178,6 +178,10 @@ model TimeEntry {
   endedAt          DateTime?
   durationSeconds  Int       @default(0)
   manual           Boolean   @default(false)
+  // Set by the midnight cron when it had to forcibly stop a forgotten timer.
+  // The client surfaces a "review this entry" notification when it sees the
+  // flag flip via the WS event so the user can trim or delete the duration.
+  autoStopped      Boolean   @default(false)
   note             String?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
