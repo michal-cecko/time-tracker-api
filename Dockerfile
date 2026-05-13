@@ -17,10 +17,18 @@ RUN bunx nest build
 FROM oven/bun:1-alpine AS runtime
 WORKDIR /app
 
+# bash for interactive use in the Dokploy Docker Terminal (image is otherwise busybox-only)
+RUN apk add --no-cache bash
+
 ENV NODE_ENV=production
 ENV HOME=/app
-# Any interactive shell (login or not) — Dokploy's terminal may bypass WORKDIR — lands in /app
+# Put project-local bins (prisma, nest, etc.) on PATH so `prisma migrate deploy`
+# works directly in the Dokploy Docker Terminal without `bunx`.
+ENV PATH="/app/node_modules/.bin:${PATH}"
+# Any interactive shell (login or not) — Dokploy's terminal may bypass WORKDIR — lands in /app.
+# $ENV is honored by ash/sh; $BASH_ENV by bash non-interactive; /etc/bash.bashrc by bash interactive.
 ENV ENV=/etc/sh.shrc
+ENV BASH_ENV=/etc/sh.shrc
 
 RUN addgroup -S app && adduser -S app -G app -h /app
 
@@ -29,11 +37,12 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/prisma ./prisma
 
-# Shell init: login shells via profile.d, non-login interactive via $ENV. Both cd to /app so
-# `bun run <anything>` works no matter how Dokploy's web terminal invokes the shell.
+# Shell init: login shells via profile.d, non-login interactive via $ENV / bash.bashrc. Both cd to /app so
+# `bun run <anything>` and `prisma <anything>` work no matter how Dokploy's web terminal invokes the shell.
 RUN printf 'cd /app 2>/dev/null\n' > /etc/profile.d/cd-to-app.sh \
  && chmod +x /etc/profile.d/cd-to-app.sh \
  && cp /etc/profile.d/cd-to-app.sh /etc/sh.shrc \
+ && cp /etc/profile.d/cd-to-app.sh /etc/bash.bashrc \
  && printf '#!/bin/sh\ncd /app && exec bun run prisma/seed.ts "$@"\n' > /usr/local/bin/seed \
  && chmod +x /usr/local/bin/seed \
  && chown -R app:app /app
