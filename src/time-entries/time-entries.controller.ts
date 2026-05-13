@@ -3,7 +3,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser, AuthUser } from '../common/decorators/current-user.decorator';
 import { TimeEntriesService } from './time-entries.service';
-import { HistoryQuery, ListPerTaskQuery, ManualEntryDto, StartTimerDto, UpdateEntryDto } from './dto/time-entry.dto';
+import { HistoryQuery, ListPerTaskQuery, ManualEntryDto, StartTimerDto, StopTimerDto, UpdateEntryDto } from './dto/time-entry.dto';
 
 @ApiTags('time-entries')
 @ApiBearerAuth()
@@ -20,8 +20,8 @@ export class TimeEntriesController {
 
   @Post('time-entries/stop')
   @HttpCode(200)
-  stop(@CurrentUser() user: AuthUser) {
-    return this.entries.stop(user.id);
+  stop(@CurrentUser() user: AuthUser, @Body() dto: StopTimerDto) {
+    return this.entries.stop(user.id, dto);
   }
 
   @Get('time-entries/running')

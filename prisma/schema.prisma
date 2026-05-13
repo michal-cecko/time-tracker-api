@@ -76,6 +76,7 @@ model User {
   activities   ActivityLog[]
   syncItems    SyncQueueItem[]
   resetTokens  PasswordResetToken[]
+  idempotencyKeys IdempotencyKey[]
 }
 
 model Settings {
@@ -218,4 +219,22 @@ model SyncQueueItem {
   createdAt DateTime  @default(now())
 
   @@index([userId, appliedAt])
+}
+
+// Idempotency-Key store: replays of a mutation with the same key (per user)
+// return the recorded response instead of re-executing. Entries expire after
+// 24h and are pruned by a cron.
+model IdempotencyKey {
+  key        String   @id
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  method     String
+  path       String
+  status     Int
+  response   Json
+  createdAt  DateTime @default(now())
+  expiresAt  DateTime
+
+  @@index([userId, createdAt])
+  @@index([expiresAt])
 }

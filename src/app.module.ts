@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
-import { APP_FILTER } from '@nestjs/core';
+import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
+import { IdempotencyInterceptor } from './common/interceptors/idempotency.interceptor';
+import { IdempotencyPruner } from './common/interceptors/idempotency.pruner';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { LoggerModule } from 'nestjs-pino';
@@ -41,6 +43,8 @@ import { RealtimeModule } from './realtime/realtime.module';
   ],
   providers: [
     { provide: APP_FILTER, useClass: SentryGlobalFilter },
+    { provide: APP_INTERCEPTOR, useClass: IdempotencyInterceptor },
+    IdempotencyPruner,
   ],
 })
 export class AppModule {}

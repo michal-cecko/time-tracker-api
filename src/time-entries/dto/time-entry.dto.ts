@@ -3,6 +3,14 @@ import { IsBooleanString, IsDateString, IsInt, IsOptional, IsString, IsUUID, Min
 
 export class StartTimerDto {
   @ApiProperty() @IsUUID() taskId!: string;
+  // Optional client-supplied timestamp — the offline outbox sets this when a
+  // queued start/stop is replayed late, so the recorded entry preserves the
+  // moment the user actually tapped Play.
+  @ApiPropertyOptional() @IsOptional() @IsDateString() startedAt?: string;
+}
+
+export class StopTimerDto {
+  @ApiPropertyOptional() @IsOptional() @IsDateString() endedAt?: string;
 }
 
 export class ManualEntryDto {

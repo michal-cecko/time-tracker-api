@@ -3,7 +3,7 @@ import { ActivityKind } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { TasksService } from '../tasks/tasks.service';
 import { RealtimeService } from '../realtime/realtime.service';
-import { HistoryQuery, ListPerTaskQuery, ManualEntryDto, StartTimerDto, UpdateEntryDto } from './dto/time-entry.dto';
+import { HistoryQuery, ListPerTaskQuery, ManualEntryDto, StartTimerDto, StopTimerDto, UpdateEntryDto } from './dto/time-entry.dto';
 
 @Injectable()
 export class TimeEntriesService {
@@ -18,13 +18,15 @@ export class TimeEntriesService {
   async start(userId: string, dto: StartTimerDto) {
     await this.ensureTaskOwned(userId, dto.taskId);
     return this.prisma.$transaction(async (tx) => {
-      const now = new Date();
+      const startAt = dto.startedAt ? new Date(dto.startedAt) : new Date();
+      const stopBoundary = new Date(); // always use "now" for stopping a prior entry
       const running = await tx.timeEntry.findFirst({ where: { userId, endedAt: null } });
       if (running) {
-        const duration = Math.max(1, Math.floor((now.getTime() - running.startedAt.getTime()) / 1000));
+        const end = startAt < stopBoundary ? startAt : stopBoundary;
+        const duration = Math.max(1, Math.floor((end.getTime() - running.startedAt.getTime()) / 1000));
         const stopped = await tx.timeEntry.update({
           where: { id: running.id },
-          data: { endedAt: now, durationSeconds: duration },
+          data: { endedAt: end, durationSeconds: duration },
         });
         this.rt.emitToUser(userId, 'timer.stopped', {
           entryId: stopped.id,
@@ -34,7 +36,7 @@ export class TimeEntriesService {
         });
       }
       const entry = await tx.timeEntry.create({
-        data: { userId, taskId: dto.taskId, startedAt: now },
+        data: { userId, taskId: dto.taskId, startedAt: startAt },
       });
       this.rt.emitToUser(userId, 'timer.started', {
         entryId: entry.id,
@@ -45,14 +47,16 @@ export class TimeEntriesService {
     });
   }
 
-  async stop(userId: string) {
+  async stop(userId: string, dto: StopTimerDto = {}) {
     const running = await this.prisma.timeEntry.findFirst({ where: { userId, endedAt: null } });
     if (!running) throw new BadRequestException('No running timer');
-    const now = new Date();
-    const duration = Math.max(1, Math.floor((now.getTime() - running.startedAt.getTime()) / 1000));
+    const requestedEnd = dto.endedAt ? new Date(dto.endedAt) : new Date();
+    // Never let endedAt precede startedAt (clock skew, bad client clock).
+    const end = requestedEnd > running.startedAt ? requestedEnd : new Date(running.startedAt.getTime() + 1000);
+    const duration = Math.max(1, Math.floor((end.getTime() - running.startedAt.getTime()) / 1000));
     const entry = await this.prisma.timeEntry.update({
       where: { id: running.id },
-      data: { endedAt: now, durationSeconds: duration },
+      data: { endedAt: end, durationSeconds: duration },
     });
     this.rt.emitToUser(userId, 'timer.stopped', {
       entryId: entry.id,
