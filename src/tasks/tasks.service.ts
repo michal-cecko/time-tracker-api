@@ -25,6 +25,28 @@ export class TasksService {
     }
   }
 
+  // Pipeline order — top-of-pipeline first, finished work last. Matches the
+  // status palette order from the prototype and tokens.css.
+  private static STATUS_ORDER: Record<Status, number> = {
+    BACKLOG: 0,
+    ESTIMATE: 1,
+    APPROVED: 2,
+    RETURN: 3,
+    IN_PROGRESS: 4,
+    IN_REVIEW: 5,
+    WAITING: 6,
+    HOLD: 7,
+    DONE: 8,
+    INVOICED: 9,
+  };
+
+  private sortSiblings(a: TaskWithEntries, b: TaskWithEntries): number {
+    const sa = TasksService.STATUS_ORDER[a.status];
+    const sb = TasksService.STATUS_ORDER[b.status];
+    if (sa !== sb) return sa - sb;
+    return a.position - b.position;
+  }
+
   private buildTree(flat: TaskWithEntries[]): TaskWithEntries[] {
     const byParent = new Map<string | null, TaskWithEntries[]>();
     for (const t of flat) {
@@ -33,10 +55,10 @@ export class TasksService {
       byParent.set(t.parentTaskId, arr);
     }
     const attach = (t: TaskWithEntries) => {
-      t.children = (byParent.get(t.id) ?? []).sort((a, b) => a.position - b.position);
+      t.children = (byParent.get(t.id) ?? []).sort((a, b) => this.sortSiblings(a, b));
       t.children.forEach(attach);
     };
-    const roots = (byParent.get(null) ?? []).sort((a, b) => a.position - b.position);
+    const roots = (byParent.get(null) ?? []).sort((a, b) => this.sortSiblings(a, b));
     roots.forEach(attach);
     return roots;
   }
@@ -52,20 +74,40 @@ export class TasksService {
     const totalEstimate = (t.estimateSeconds ?? 0) + childEstimate;
     const running = t.timeEntries.some((e) => !e.endedAt);
 
-    let effectiveRateCents: number | null = null;
-    let earnedSoFarCents: number | null = null;
-    let projectedTotalCents: number | null = null;
+    // Own billing — what THIS task contributes, independent of children.
+    let ownEarned: number | null = null;
+    let ownProjected: number | null = null;
     if (t.billingMode === 'HOURLY_RATE' && t.hourlyRateCents != null) {
-      effectiveRateCents = t.hourlyRateCents;
-      earnedSoFarCents = Math.round((totalTime / 3600) * t.hourlyRateCents);
+      ownEarned = Math.round((ownTracked / 3600) * t.hourlyRateCents);
       if (t.estimateSeconds != null) {
-        projectedTotalCents = Math.round((t.estimateSeconds / 3600) * t.hourlyRateCents);
+        ownProjected = Math.round((t.estimateSeconds / 3600) * t.hourlyRateCents);
       }
     } else if (t.billingMode === 'TASK_PRICE' && t.taskPriceCents != null) {
-      const hours = totalTime / 3600;
-      effectiveRateCents = hours > 0 ? Math.round(t.taskPriceCents / hours) : null;
-      earnedSoFarCents = t.taskPriceCents;
-      projectedTotalCents = t.taskPriceCents;
+      ownEarned = t.taskPriceCents;
+      ownProjected = t.taskPriceCents;
+    }
+
+    // Roll-up earnings from descendants. If the parent has no billing of its
+    // own but its subtasks do, we still want to surface the totals.
+    const childEarned = children.reduce((s: number, c: any) => s + (c.earnedSoFarCents ?? 0), 0);
+    const childProjected = children.reduce((s: number, c: any) => s + (c.projectedTotalCents ?? 0), 0);
+    const hasOwn = ownEarned !== null;
+    const hasChildBilling = children.some((c: any) => c.earnedSoFarCents !== null);
+    const anyBilling = hasOwn || hasChildBilling;
+
+    const earnedSoFarCents = anyBilling ? (ownEarned ?? 0) + childEarned : null;
+    const hasOwnProjected = ownProjected !== null;
+    const hasChildProjected = children.some((c: any) => c.projectedTotalCents !== null);
+    const projectedTotalCents = (hasOwnProjected || hasChildProjected)
+      ? (ownProjected ?? 0) + childProjected
+      : null;
+
+    // Effective hourly rate across the whole subtree — earned / total hours.
+    let effectiveRateCents: number | null = null;
+    if (earnedSoFarCents != null && totalTime > 0) {
+      effectiveRateCents = Math.round(earnedSoFarCents / (totalTime / 3600));
+    } else if (t.billingMode === 'HOURLY_RATE' && t.hourlyRateCents != null) {
+      effectiveRateCents = t.hourlyRateCents;
     }
 
     const { timeEntries, ...rest } = t as any;
@@ -103,10 +145,14 @@ export class TasksService {
     })) as unknown as TaskWithEntries[];
     const map = new Map(flat.map((x) => [x.id, x]));
     const root = map.get(id)!;
-    // Restrict tree to this subtree only.
+    // Restrict tree to this subtree only, sorted by status then position
+    // to match the project-tree ordering.
     const collect = (node: TaskWithEntries): TaskWithEntries => ({
       ...node,
-      children: flat.filter((x) => x.parentTaskId === node.id).map(collect),
+      children: flat
+        .filter((x) => x.parentTaskId === node.id)
+        .sort((a, b) => this.sortSiblings(a, b))
+        .map(collect),
     });
     return this.decorate(collect(root));
   }

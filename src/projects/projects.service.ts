@@ -20,25 +20,78 @@ export class ProjectsService {
         tasks: {
           select: {
             status: true,
+            billingMode: true,
+            hourlyRateCents: true,
+            taskPriceCents: true,
+            estimateSeconds: true,
             timeEntries: { select: { durationSeconds: true, endedAt: true, startedAt: true } },
           },
         },
       },
     });
 
+    const since30 = Date.now() - 30 * 24 * 3600 * 1000;
+
     return projects.map((p) => {
       let trackedSeconds = 0;
       let openTaskCount = 0;
+      let earnedCents = 0;
+      let projectedCents = 0;
+      let earnedLast30dCents = 0;
+      let hasBilling = false;
+      let hasProjected = false;
+
       for (const t of p.tasks) {
         if (!CLOSED_STATUSES.includes(t.status)) openTaskCount += 1;
+
+        let taskTrackedSec = 0;
+        let taskTrackedLast30Sec = 0;
         for (const e of t.timeEntries) {
-          trackedSeconds += e.endedAt
+          const dur = e.endedAt
             ? e.durationSeconds
             : Math.max(0, Math.floor((Date.now() - e.startedAt.getTime()) / 1000));
+          taskTrackedSec += dur;
+          // An entry counts toward "last 30 days" if it overlaps the window.
+          // We approximate by anchoring on the entry's end (or "now" if running).
+          const endMs = e.endedAt ? e.endedAt.getTime() : Date.now();
+          if (endMs >= since30) taskTrackedLast30Sec += dur;
+        }
+        trackedSeconds += taskTrackedSec;
+
+        if (t.billingMode === 'HOURLY_RATE' && t.hourlyRateCents != null) {
+          hasBilling = true;
+          earnedCents += Math.round((taskTrackedSec / 3600) * t.hourlyRateCents);
+          earnedLast30dCents += Math.round((taskTrackedLast30Sec / 3600) * t.hourlyRateCents);
+          if (t.estimateSeconds != null) {
+            hasProjected = true;
+            projectedCents += Math.round((t.estimateSeconds / 3600) * t.hourlyRateCents);
+          }
+        } else if (t.billingMode === 'TASK_PRICE' && t.taskPriceCents != null) {
+          hasBilling = true;
+          hasProjected = true;
+          earnedCents += t.taskPriceCents;
+          projectedCents += t.taskPriceCents;
+          // Attribute a slice of the fixed price proportional to the share
+          // of the task's tracked time that fell in the last 30 days.
+          if (taskTrackedSec > 0) {
+            earnedLast30dCents += Math.round(t.taskPriceCents * (taskTrackedLast30Sec / taskTrackedSec));
+          }
         }
       }
+
       const { tasks, ...rest } = p;
-      return { ...rest, trackedSeconds, openTaskCount };
+      return {
+        ...rest,
+        trackedSeconds,
+        openTaskCount,
+        earnedCents: hasBilling ? earnedCents : null,
+        earnedLast30dCents: hasBilling ? earnedLast30dCents : null,
+        projectedCents: hasProjected ? projectedCents : null,
+        effectiveRateCents:
+          hasBilling && trackedSeconds > 0
+            ? Math.round(earnedCents / (trackedSeconds / 3600))
+            : null,
+      };
     });
   }
 
