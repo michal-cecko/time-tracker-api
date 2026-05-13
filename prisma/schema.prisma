@@ -171,8 +171,10 @@ model Task {
 
 model TimeEntry {
   id               String    @id @default(uuid())
-  taskId           String
-  task             Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  // Nullable so users can start a timer / create a manual entry without
+  // picking a task up front (ClickUp-style "I'll categorise it later").
+  taskId           String?
+  task             Task?     @relation(fields: [taskId], references: [id], onDelete: Cascade)
   userId           String
   user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   startedAt        DateTime

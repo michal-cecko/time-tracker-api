@@ -36,13 +36,14 @@ export class ReportsService {
       const sec = e.endedAt ? e.durationSeconds : Math.max(0, Math.floor((Date.now() - e.startedAt.getTime()) / 1000));
       const idx = Math.floor((startOfDay(e.startedAt).getTime() - start.getTime()) / 86_400_000);
       if (idx < 0 || idx > 6) continue;
-      const p = e.task.project;
       days[idx].total += sec;
+      total += sec;
+      const p = e.task?.project;
+      if (!p) continue; // unassigned entry — contributes to total but no project bucket.
       days[idx].perProject[p.id] = (days[idx].perProject[p.id] ?? 0) + sec;
       perProject[p.id] = perProject[p.id]
         ? { ...perProject[p.id], seconds: perProject[p.id].seconds + sec }
         : { name: p.name, colorHex: p.colorHex, seconds: sec };
-      total += sec;
     }
 
     return { from: start.toISOString().slice(0, 10), to: days[6].date, total, days, perProject };

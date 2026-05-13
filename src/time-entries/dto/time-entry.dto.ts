@@ -2,7 +2,8 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsBooleanString, IsDateString, IsInt, IsOptional, IsString, IsUUID, Min } from 'class-validator';
 
 export class StartTimerDto {
-  @ApiProperty() @IsUUID() taskId!: string;
+  // Optional: an unassigned timer can be categorised later via PATCH.
+  @ApiPropertyOptional() @IsOptional() @IsUUID() taskId?: string;
   // Optional client-supplied timestamp — the offline outbox sets this when a
   // queued start/stop is replayed late, so the recorded entry preserves the
   // moment the user actually tapped Play.
@@ -14,7 +15,7 @@ export class StopTimerDto {
 }
 
 export class ManualEntryDto {
-  @ApiProperty() @IsUUID() taskId!: string;
+  @ApiPropertyOptional() @IsOptional() @IsUUID() taskId?: string;
   @ApiProperty() @IsDateString() startedAt!: string;
   @ApiPropertyOptional() @IsOptional() @IsDateString() endedAt?: string;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(1) durationSeconds?: number;
@@ -22,6 +23,8 @@ export class ManualEntryDto {
 }
 
 export class UpdateEntryDto {
+  // Assign / re-assign / unassign (null) the entry's task post-hoc.
+  @ApiPropertyOptional() @IsOptional() taskId?: string | null;
   @ApiPropertyOptional() @IsOptional() @IsDateString() startedAt?: string;
   @ApiPropertyOptional() @IsOptional() @IsDateString() endedAt?: string;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) durationSeconds?: number;

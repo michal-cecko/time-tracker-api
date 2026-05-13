@@ -49,15 +49,17 @@ export class AutoStopService {
         where: { id: e.id },
         data: { endedAt, durationSeconds: duration, autoStopped: true },
       });
-      await this.prisma.activityLog.create({
-        data: {
-          userId: e.userId,
-          taskId: e.taskId,
-          projectId: e.task.projectId,
-          kind: ActivityKind.TIME_TRACKED,
-          meta: { autoStopped: true, durationSeconds: duration },
-        },
-      });
+      if (e.task && e.taskId) {
+        await this.prisma.activityLog.create({
+          data: {
+            userId: e.userId,
+            taskId: e.taskId,
+            projectId: e.task.projectId,
+            kind: ActivityKind.TIME_TRACKED,
+            meta: { autoStopped: true, durationSeconds: duration },
+          },
+        });
+      }
       // Two events: keeps existing `timer.stopped` listeners working, and
       // the dedicated `timer.autoStopped` lets the client know to show the
       // review notification rather than the regular silent stop.
@@ -70,7 +72,7 @@ export class AutoStopService {
       this.rt.emitToUser(e.userId, 'timer.autoStopped', {
         entryId: updated.id,
         taskId: updated.taskId,
-        taskTitle: e.task.title,
+        taskTitle: e.task?.title ?? null,
         durationSeconds: updated.durationSeconds,
       });
     }

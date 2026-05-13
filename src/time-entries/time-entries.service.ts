@@ -16,7 +16,7 @@ export class TimeEntriesService {
   }
 
   async start(userId: string, dto: StartTimerDto) {
-    await this.ensureTaskOwned(userId, dto.taskId);
+    if (dto.taskId) await this.ensureTaskOwned(userId, dto.taskId);
     return this.prisma.$transaction(async (tx) => {
       const startAt = dto.startedAt ? new Date(dto.startedAt) : new Date();
       const stopBoundary = new Date(); // always use "now" for stopping a prior entry
@@ -36,7 +36,7 @@ export class TimeEntriesService {
         });
       }
       const entry = await tx.timeEntry.create({
-        data: { userId, taskId: dto.taskId, startedAt: startAt },
+        data: { userId, taskId: dto.taskId ?? null, startedAt: startAt },
       });
       this.rt.emitToUser(userId, 'timer.started', {
         entryId: entry.id,
@@ -72,7 +72,7 @@ export class TimeEntriesService {
   }
 
   async manual(userId: string, dto: ManualEntryDto) {
-    const task = await this.ensureTaskOwned(userId, dto.taskId);
+    const task = dto.taskId ? await this.ensureTaskOwned(userId, dto.taskId) : null;
     const startedAt = new Date(dto.startedAt);
     let endedAt: Date | null = null;
     let duration = dto.durationSeconds ?? 0;
@@ -85,11 +85,13 @@ export class TimeEntriesService {
       throw new BadRequestException('Provide endedAt or durationSeconds');
     }
     const entry = await this.prisma.timeEntry.create({
-      data: { userId, taskId: dto.taskId, startedAt, endedAt, durationSeconds: duration, manual: true, note: dto.note },
+      data: { userId, taskId: dto.taskId ?? null, startedAt, endedAt, durationSeconds: duration, manual: true, note: dto.note },
     });
-    await this.prisma.activityLog.create({
-      data: { userId, taskId: task.id, projectId: task.projectId, kind: ActivityKind.MANUAL_ENTRY_ADDED, meta: { entryId: entry.id, durationSeconds: duration } },
-    });
+    if (task) {
+      await this.prisma.activityLog.create({
+        data: { userId, taskId: task.id, projectId: task.projectId, kind: ActivityKind.MANUAL_ENTRY_ADDED, meta: { entryId: entry.id, durationSeconds: duration } },
+      });
+    }
     this.rt.emitToUser(userId, 'entry.upserted', entry);
     return entry;
   }
@@ -102,9 +104,22 @@ export class TimeEntriesService {
     let duration = dto.durationSeconds ?? existing.durationSeconds;
     if (endedAt) duration = Math.max(1, Math.floor((endedAt.getTime() - startedAt.getTime()) / 1000));
 
+    // Allow assign / re-assign / clear (null) of the task.
+    let taskId: string | null | undefined = undefined;
+    if (dto.taskId !== undefined) {
+      if (dto.taskId === null) taskId = null;
+      else { await this.ensureTaskOwned(userId, dto.taskId); taskId = dto.taskId; }
+    }
+
     const entry = await this.prisma.timeEntry.update({
       where: { id },
-      data: { startedAt, endedAt, durationSeconds: duration, note: dto.note ?? existing.note },
+      data: {
+        startedAt,
+        endedAt,
+        durationSeconds: duration,
+        note: dto.note ?? existing.note,
+        ...(taskId !== undefined ? { taskId } : {}),
+      },
     });
     this.rt.emitToUser(userId, 'entry.upserted', entry);
     return entry;
@@ -165,7 +180,7 @@ export class TimeEntriesService {
       return chain;
     };
     return entries.map((e) => {
-      if (!e.task) return e;
+      if (!e.task || !e.taskId) return e;
       return { ...e, task: { ...e.task, ancestors: chainOf(e.taskId) } };
     });
   }
