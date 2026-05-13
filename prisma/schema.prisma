@@ -120,16 +120,18 @@ model PasswordResetToken {
 }
 
 model Project {
-  id         String    @id @default(uuid())
-  userId     String
-  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name       String
-  initials   String
-  colorHex   String
-  archived   Boolean   @default(false)
-  archivedAt DateTime?
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  initials    String
+  colorHex    String
+  // Rich-text description (Tiptap JSON document). Same shape as Task.description.
+  description Json?
+  archived    Boolean   @default(false)
+  archivedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   tasks      Task[]
   activities ActivityLog[]

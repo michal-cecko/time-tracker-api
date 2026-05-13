@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateProjectDto, ListProjectsQuery, UpdateProjectDto } from './dto/project.dto';
 import { CLOSED_STATUSES } from '../common/constants/status';
@@ -102,14 +103,26 @@ export class ProjectsService {
   }
 
   async create(userId: string, dto: CreateProjectDto) {
-    const p = await this.prisma.project.create({ data: { ...dto, userId } });
+    const { description, ...rest } = dto;
+    const p = await this.prisma.project.create({
+      data: {
+        ...rest,
+        userId,
+        ...(description !== undefined ? { description: description as Prisma.InputJsonValue } : {}),
+      },
+    });
     this.rt.emitToUser(userId, 'project.upserted', p);
     return p;
   }
 
   async update(userId: string, id: string, dto: UpdateProjectDto) {
     await this.getOrThrow(userId, id);
-    const p = await this.prisma.project.update({ where: { id }, data: dto });
+    const { description, ...rest } = dto;
+    const data: Prisma.ProjectUpdateInput = { ...rest };
+    if (description !== undefined) {
+      data.description = (description as Prisma.InputJsonValue) ?? Prisma.JsonNull;
+    }
+    const p = await this.prisma.project.update({ where: { id }, data });
     this.rt.emitToUser(userId, 'project.upserted', p);
     return p;
   }
