@@ -19,7 +19,7 @@ export class ProjectsController {
 
   @Get(':id')
   getOne(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.projects.getOrThrow(user.id, id);
+    return this.projects.findOne(user.id, id);
   }
 
   @Post()
