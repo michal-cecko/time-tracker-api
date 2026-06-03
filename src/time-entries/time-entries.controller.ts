@@ -26,7 +26,7 @@ export class TimeEntriesController {
 
   @Get('time-entries/running')
   running(@CurrentUser() user: AuthUser) {
-    return this.entries.runningEntry(user.id);
+    return this.entries.runningEntries(user.id);
   }
 
   @Post('time-entries')

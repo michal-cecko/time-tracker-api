@@ -60,6 +60,66 @@ describe('Projects + Tasks + Timer (e2e)', () => {
     expect(stopped.body.durationSeconds).toBeGreaterThan(0);
   });
 
+  it('runs multiple timers concurrently and stops them independently', async () => {
+    // Two distinct tasks, each tracked at the same time.
+    const mk = async (title: string) => {
+      const t = await request(app.getHttpServer())
+        .post('/api/v1/tasks')
+        .set('Authorization', `Bearer ${access}`)
+        .send({ projectId, title });
+      return t.body.id as string;
+    };
+    const taskA = await mk('Concurrent A');
+    const taskB = await mk('Concurrent B');
+
+    const a = await request(app.getHttpServer())
+      .post('/api/v1/time-entries/start')
+      .set('Authorization', `Bearer ${access}`)
+      .send({ taskId: taskA });
+    const b = await request(app.getHttpServer())
+      .post('/api/v1/time-entries/start')
+      .set('Authorization', `Bearer ${access}`)
+      .send({ taskId: taskB });
+    expect(a.status).toBe(200);
+    expect(b.status).toBe(200);
+    // Starting B must NOT have stopped A.
+    expect(a.body.endedAt).toBeNull();
+    expect(b.body.endedAt).toBeNull();
+
+    // Re-starting the same task is idempotent — returns the existing entry.
+    const aAgain = await request(app.getHttpServer())
+      .post('/api/v1/time-entries/start')
+      .set('Authorization', `Bearer ${access}`)
+      .send({ taskId: taskA });
+    expect(aAgain.body.id).toBe(a.body.id);
+
+    const running = await request(app.getHttpServer())
+      .get('/api/v1/time-entries/running')
+      .set('Authorization', `Bearer ${access}`);
+    expect(Array.isArray(running.body)).toBe(true);
+    expect(running.body.length).toBe(2);
+
+    // Stop only A by id; B keeps running.
+    const stoppedA = await request(app.getHttpServer())
+      .post('/api/v1/time-entries/stop')
+      .set('Authorization', `Bearer ${access}`)
+      .send({ entryId: a.body.id });
+    expect(stoppedA.status).toBe(200);
+    expect(stoppedA.body.id).toBe(a.body.id);
+
+    const stillRunning = await request(app.getHttpServer())
+      .get('/api/v1/time-entries/running')
+      .set('Authorization', `Bearer ${access}`);
+    expect(stillRunning.body.length).toBe(1);
+    expect(stillRunning.body[0].id).toBe(b.body.id);
+
+    // Clean up B so later tests start from a clean slate.
+    await request(app.getHttpServer())
+      .post('/api/v1/time-entries/stop')
+      .set('Authorization', `Bearer ${access}`)
+      .send({ entryId: b.body.id });
+  });
+
   it('rejects billing XOR violation', async () => {
     const res = await request(app.getHttpServer())
       .patch(`/api/v1/tasks/${taskId}`)

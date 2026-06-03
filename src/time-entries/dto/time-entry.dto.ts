@@ -11,6 +11,10 @@ export class StartTimerDto {
 }
 
 export class StopTimerDto {
+  // Which running timer to stop. Multiple timers can run concurrently (one per
+  // task), so a stop must name its target. Omitted → stop the most recently
+  // started timer (back-compat for the single-timer clients).
+  @ApiPropertyOptional() @IsOptional() @IsUUID() entryId?: string;
   @ApiPropertyOptional() @IsOptional() @IsDateString() endedAt?: string;
 }
 

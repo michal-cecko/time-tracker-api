@@ -19,22 +19,14 @@ export class TimeEntriesService {
     if (dto.taskId) await this.ensureTaskOwned(userId, dto.taskId);
     return this.prisma.$transaction(async (tx) => {
       const startAt = dto.startedAt ? new Date(dto.startedAt) : new Date();
-      const stopBoundary = new Date(); // always use "now" for stopping a prior entry
-      const running = await tx.timeEntry.findFirst({ where: { userId, endedAt: null } });
-      if (running) {
-        const end = startAt < stopBoundary ? startAt : stopBoundary;
-        const duration = Math.max(1, Math.floor((end.getTime() - running.startedAt.getTime()) / 1000));
-        const stopped = await tx.timeEntry.update({
-          where: { id: running.id },
-          data: { endedAt: end, durationSeconds: duration },
-        });
-        this.rt.emitToUser(userId, 'timer.stopped', {
-          entryId: stopped.id,
-          taskId: stopped.taskId,
-          endedAt: stopped.endedAt,
-          durationSeconds: stopped.durationSeconds,
-        });
-      }
+      // Multiple timers may run at once — one per task (plus at most one
+      // unassigned). Starting no longer stops the others. If a timer for this
+      // same task is already running, return it untouched so a double-tap or a
+      // replayed offline start is idempotent rather than spawning a duplicate.
+      const existing = await tx.timeEntry.findFirst({
+        where: { userId, endedAt: null, taskId: dto.taskId ?? null },
+      });
+      if (existing) return existing;
       const entry = await tx.timeEntry.create({
         data: { userId, taskId: dto.taskId ?? null, startedAt: startAt },
       });
@@ -48,7 +40,14 @@ export class TimeEntriesService {
   }
 
   async stop(userId: string, dto: StopTimerDto = {}) {
-    const running = await this.prisma.timeEntry.findFirst({ where: { userId, endedAt: null } });
+    // With concurrent timers a stop targets a specific entry. Without an id we
+    // fall back to the most recently started running timer (legacy clients).
+    const running = await this.prisma.timeEntry.findFirst({
+      where: dto.entryId
+        ? { id: dto.entryId, userId, endedAt: null }
+        : { userId, endedAt: null },
+      orderBy: { startedAt: 'desc' },
+    });
     if (!running) throw new BadRequestException('No running timer');
     const requestedEnd = dto.endedAt ? new Date(dto.endedAt) : new Date();
     // Never let endedAt precede startedAt (clock skew, bad client clock).
@@ -67,8 +66,13 @@ export class TimeEntriesService {
     return entry;
   }
 
-  async runningEntry(userId: string) {
-    return this.prisma.timeEntry.findFirst({ where: { userId, endedAt: null } });
+  // Returns every currently-running timer (newest first). Concurrent timers
+  // are supported, so this is always an array — clients render them as a set.
+  async runningEntries(userId: string) {
+    return this.prisma.timeEntry.findMany({
+      where: { userId, endedAt: null },
+      orderBy: { startedAt: 'desc' },
+    });
   }
 
   async manual(userId: string, dto: ManualEntryDto) {
