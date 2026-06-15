@@ -379,7 +379,7 @@ export class TasksService {
   async descendantIds(taskId: string): Promise<string[]> {
     const result = await this.prisma.$queryRaw<Array<{ id: string }>>`
       WITH RECURSIVE descendants AS (
-        SELECT id FROM "Task" WHERE id = ${taskId}::uuid
+        SELECT id FROM "Task" WHERE id = ${taskId}
         UNION ALL
         SELECT t.id FROM "Task" t INNER JOIN descendants d ON t."parentTaskId" = d.id
       )
